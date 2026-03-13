@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sensalog BLE Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #16192a;
+      --surface2: #1e2235;
+      --border: #272b3d;
+      --accent: #4f8ef7;
+      --green: #2ecc71;
+      --red: #e74c3c;
+      --amber: #f39c12;
+      --text: #dde2f0;
+      --muted: #5c6480;
+      --x-color: #ff6b6b;
+      --y-color: #51cf66;
+      --z-color: #4dabf7;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
+    #status-badge {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 0.3rem 0.75rem;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.connecting { background: var(--amber); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+    }
+    .card-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    /* ── Config ── */
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+    .field label {
+      display: block;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+    }
+    .field input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.45rem 0.65rem;
+      color: var(--text);
+      font-size: 0.78rem;
+      font-family: 'Menlo', 'Monaco', monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field input:focus { border-color: var(--accent); }
+
+    /* ── Controls ── */
+    .controls { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+    .btn {
+      padding: 0.45rem 1.1rem;
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.88; }
+    .btn:active:not(:disabled) { transform: scale(0.96); }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn-primary  { background: var(--accent); color: #fff; }
+    .btn-success  { background: var(--green);  color: #fff; }
+    .btn-danger   { background: var(--red);    color: #fff; }
+    .btn-outline  { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-amber    { background: var(--amber); color: #fff; }
+    .divider { width: 1px; height: 24px; background: var(--border); }
+
+    /* ── Chart ── */
+    .chart-wrap { position: relative; height: 380px; }
+
+    /* ── Stats ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      text-align: center;
+    }
+    .stat-label { font-size: 0.65rem; color: var(--muted); margin-bottom: 0.2rem; }
+    .stat-value { font-size: 1.3rem; font-weight: 600; font-family: 'Menlo', 'Monaco', monospace; }
+    .stat-x .stat-value { color: var(--x-color); }
+    .stat-y .stat-value { color: var(--y-color); }
+    .stat-z .stat-value { color: var(--z-color); }
+
+    /* ── Log ── */
+    .log {
+      font-family: 'Menlo', 'Monaco', monospace;
+      font-size: 0.72rem;
+      color: var(--muted);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .log-entry { padding: 0.12rem 0; line-height: 1.5; }
+    .log-entry.error   { color: var(--red); }
+    .log-entry.success { color: var(--green); }
+    .log-entry.warn    { color: var(--amber); }
+
+    @media (max-width: 680px) {
+      body { padding: 1rem; }
+      .config-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <rect width="28" height="28" rx="7" fill="#4f8ef7" opacity="0.15"/>
+      <circle cx="14" cy="14" r="5" fill="#4f8ef7"/>
+      <circle cx="14" cy="14" r="9" stroke="#4f8ef7" stroke-width="1.5" stroke-dasharray="4 3"/>
+    </svg>
+    <h1>Sensalog BLE Monitor</h1>
+    <div id="status-badge">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">Disconnected</span>
+    </div>
+  </header>
+
+  <!-- Config -->
+  <div class="card">
+    <div class="card-label">BLE Configuration</div>
+    <div class="config-grid">
+      <div class="field">
+        <label>Service UUID</label>
+        <input id="svc-uuid" type="text" value="0000fff0-0000-1000-8000-00805f9b34fb">
+      </div>
+      <div class="field">
+        <label>Write Characteristic UUID</label>
+        <input id="wr-uuid" type="text" value="0000fff1-0000-1000-8000-00805f9b34fb">
+      </div>
+      <div class="field">
+        <label>Notify Characteristic UUID</label>
+        <input id="nt-uuid" type="text" value="0000fff2-0000-1000-8000-00805f9b34fb">
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card">
+    <div class="card-label">Controls</div>
+    <div class="controls">
+      <button class="btn btn-primary" id="btn-connect">Connect</button>
+      <div class="divider"></div>
+      <button class="btn btn-success" id="btn-start" disabled>&#9654; Start Stream</button>
+      <button class="btn btn-danger"  id="btn-stop"  disabled>&#9646;&#9646; Stop Stream</button>
+      <div class="divider"></div>
+      <button class="btn btn-amber"   id="btn-buzz"  disabled>&#x2387; Buzz</button>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card">
+    <div class="card-label">Accelerometer (raw int16)</div>
+    <div class="chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
+    <div class="stats">
+      <div class="stat stat-x">
+        <div class="stat-label">Accel X</div>
+        <div class="stat-value" id="val-x">—</div>
+      </div>
+      <div class="stat stat-y">
+        <div class="stat-label">Accel Y</div>
+        <div class="stat-value" id="val-y">—</div>
+      </div>
+      <div class="stat stat-z">
+        <div class="stat-label">Accel Z</div>
+        <div class="stat-value" id="val-z">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="card">
+    <div class="card-label">Log</div>
+    <div class="log" id="log"></div>
+  </div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════
+//  CBOR Decoder
+//  Supports: uint, negint, bytes, text, array, map
+//  Handles int64 via BigUint64 → Number
+// ═══════════════════════════════════════════
+class Cbor {
+  constructor(buf) {
+    this.b = buf instanceof ArrayBuffer ? buf : buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    this.v = new DataView(this.b);
+    this.p = 0;
+  }
+
+  static decode(buf) { return new Cbor(buf)._item(); }
+
+  _rd()   { return this.v.getUint8(this.p++); }
+
+  _uint(info) {
+    if (info < 24) return info;
+    if (info === 24) return this._rd();
+    if (info === 25) { const n = this.v.getUint16(this.p); this.p += 2; return n; }
+    if (info === 26) { const n = this.v.getUint32(this.p); this.p += 4; return n; }
+    if (info === 27) { const n = this.v.getBigUint64(this.p); this.p += 8; return Number(n); }
+    throw new Error(`CBOR: unsupported additional info ${info}`);
+  }
+
+  _item() {
+    const b  = this._rd();
+    const mt = b >> 5, ai = b & 0x1f;
+    switch (mt) {
+      case 0: return this._uint(ai);
+      case 1: return -1 - this._uint(ai);
+      case 2: { const n = this._uint(ai); const d = new Uint8Array(this.b, this.p, n); this.p += n; return d; }
+      case 3: { const n = this._uint(ai); const d = new Uint8Array(this.b, this.p, n); this.p += n; return new TextDecoder().decode(d); }
+      case 4: { const n = this._uint(ai); return Array.from({length: n}, () => this._item()); }
+      case 5: { const n = this._uint(ai); const m = {}; for (let i = 0; i < n; i++) { const k = this._item(); m[k] = this._item(); } return m; }
+      default: throw new Error(`CBOR: unsupported major type ${mt}`);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+//  COBS Decoder
+//  Input: encoded bytes WITHOUT the trailing 0x00 delimiter
+//  Output: decoded Uint8Array
+// ═══════════════════════════════════════════
+function cobsDecode(enc) {
+  const out = [];
+  let i = 0;
+  while (i < enc.length) {
+    const code = enc[i++];
+    for (let j = 1; j < code; j++) out.push(enc[i++]);
+    if (code < 0xFF && i < enc.length) out.push(0);
+  }
+  return new Uint8Array(out);
+}
+
+// ═══════════════════════════════════════════
+//  Chart
+// ═══════════════════════════════════════════
+const MAX_PTS = 400;
+
+const chartDs = [
+  { label: 'X', data: [], borderColor: '#ff6b6b', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 1.5, tension: 0.15 },
+  { label: 'Y', data: [], borderColor: '#51cf66', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 1.5, tension: 0.15 },
+  { label: 'Z', data: [], borderColor: '#4dabf7', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 1.5, tension: 0.15 },
+];
+
+const chart = new Chart(document.getElementById('chart'), {
+  type: 'line',
+  data: { labels: [], datasets: chartDs },
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: {
+        ticks: { color: '#5c6480', maxTicksLimit: 8, font: { size: 10 } },
+        grid:  { color: '#1a1d2e' },
+        title: { display: true, text: 'Time (s)', color: '#5c6480', font: { size: 11 } },
+      },
+      y: {
+        ticks: { color: '#5c6480', font: { size: 10 } },
+        grid:  { color: '#1a1d2e' },
+        title: { display: true, text: 'Raw int16', color: '#5c6480', font: { size: 11 } },
+      },
+    },
+    plugins: {
+      legend: { labels: { color: '#dde2f0', boxWidth: 12, font: { size: 11 } } },
+    },
+  },
+});
+
+const valX = document.getElementById('val-x');
+const valY = document.getElementById('val-y');
+const valZ = document.getElementById('val-z');
+
+function pushAccel(tSec, x, y, z) {
+  const labels = chart.data.labels;
+  labels.push(tSec.toFixed(2));
+  chartDs[0].data.push(x);
+  chartDs[1].data.push(y);
+  chartDs[2].data.push(z);
+  if (labels.length > MAX_PTS) {
+    labels.shift();
+    chartDs[0].data.shift();
+    chartDs[1].data.shift();
+    chartDs[2].data.shift();
+  }
+  chart.update('none');
+  valX.textContent = x;
+  valY.textContent = y;
+  valZ.textContent = z;
+}
+
+// ═══════════════════════════════════════════
+//  BLE state
+// ═══════════════════════════════════════════
+let bleDevice   = null;
+let writeChar   = null;
+let notifyChar  = null;
+let cobsBuf     = [];
+let streamStart = null;
+let isConnected = false;
+
+// ═══════════════════════════════════════════
+//  Logging
+// ═══════════════════════════════════════════
+const logEl = document.getElementById('log');
+
+function log(msg, type = '') {
+  const ts  = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  div.className = 'log-entry' + (type ? ' ' + type : '');
+  div.textContent = `[${ts}]  ${msg}`;
+  logEl.prepend(div);
+  while (logEl.children.length > 80) logEl.removeChild(logEl.lastChild);
+}
+
+// ═══════════════════════════════════════════
+//  UI helpers
+// ═══════════════════════════════════════════
+const dot        = document.getElementById('dot');
+const statusText = document.getElementById('status-text');
+const btnConnect = document.getElementById('btn-connect');
+const btnStart   = document.getElementById('btn-start');
+const btnStop    = document.getElementById('btn-stop');
+const btnBuzz    = document.getElementById('btn-buzz');
+
+function setConnectedUI(val, label = '') {
+  isConnected = val;
+  dot.className = 'dot' + (val ? ' connected' : '');
+  statusText.textContent = val ? (label || 'Connected') : 'Disconnected';
+  btnConnect.textContent = val ? 'Disconnect' : 'Connect';
+  btnConnect.className   = val ? 'btn btn-danger' : 'btn btn-primary';
+  btnStart.disabled  = !val;
+  btnStop.disabled   = !val;
+  btnBuzz.disabled   = !val;
+}
+
+function setConnecting(val) {
+  dot.className = val ? 'dot connecting' : 'dot';
+}
+
+// ═══════════════════════════════════════════
+//  BLE connect / disconnect
+// ═══════════════════════════════════════════
+async function connect() {
+  const svcUUID = document.getElementById('svc-uuid').value.trim();
+  const wrUUID  = document.getElementById('wr-uuid').value.trim();
+  const ntUUID  = document.getElementById('nt-uuid').value.trim();
+
+  if (!navigator.bluetooth) {
+    log('Web Bluetooth not supported in this browser.', 'error');
+    return;
+  }
+
+  setConnecting(true);
+  btnConnect.disabled = true;
+  log('Requesting BLE device…');
+
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [svcUUID] }],
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+    log(`Found: ${bleDevice.name || 'Unknown device'}`, 'success');
+
+    const server  = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(svcUUID);
+    writeChar     = await service.getCharacteristic(wrUUID);
+    notifyChar    = await service.getCharacteristic(ntUUID);
+
+    notifyChar.addEventListener('characteristicvaluechanged', onData);
+    await notifyChar.startNotifications();
+
+    setConnectedUI(true, bleDevice.name || 'Connected');
+    log('Notifications active — ready to stream.', 'success');
+  } catch (err) {
+    log(`Connection failed: ${err.message}`, 'error');
+    setConnectedUI(false);
+  } finally {
+    setConnecting(false);
+    btnConnect.disabled = false;
+  }
+}
+
+function disconnect() {
+  if (bleDevice?.gatt.connected) bleDevice.gatt.disconnect();
+}
+
+function onDisconnected() {
+  setConnectedUI(false);
+  cobsBuf     = [];
+  streamStart = null;
+  writeChar   = null;
+  notifyChar  = null;
+  log('Device disconnected.', 'warn');
+}
+
+// ═══════════════════════════════════════════
+//  Send command bytes
+// ═══════════════════════════════════════════
+async function sendCmd(byte) {
+  if (!writeChar) return;
+  try {
+    await writeChar.writeValueWithoutResponse(new Uint8Array([byte]));
+  } catch {
+    // Fallback for characteristics without write-without-response property
+    await writeChar.writeValue(new Uint8Array([byte]));
+  }
+}
+
+// ═══════════════════════════════════════════
+//  COBS frame accumulation
+// ═══════════════════════════════════════════
+function onData(event) {
+  const bytes = new Uint8Array(event.target.value.buffer);
+  for (const b of bytes) {
+    if (b === 0x00) {
+      if (cobsBuf.length > 0) {
+        processFrame(new Uint8Array(cobsBuf));
+        cobsBuf = [];
+      }
+    } else {
+      cobsBuf.push(b);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+//  Decode frame → plot
+// ═══════════════════════════════════════════
+function processFrame(encoded) {
+  let packet;
+  try {
+    const raw = cobsDecode(encoded);
+    packet = Cbor.decode(raw);
+  } catch (err) {
+    log(`Decode error: ${err.message}`, 'error');
+    return;
+  }
+
+  if (!streamStart) streamStart = performance.now();
+  const tSec = (performance.now() - streamStart) / 1000;
+
+  // imu_packet = array of imu_data
+  const imuPacket = packet['imu'];
+  if (Array.isArray(imuPacket)) {
+    for (const imuData of imuPacket) {
+      const accel = imuData['a'];
+      if (accel && accel['x'] !== undefined) {
+        pushAccel(tSec, accel['x'], accel['y'], accel['z']);
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+//  Button wiring
+// ═══════════════════════════════════════════
+btnConnect.addEventListener('click', () => {
+  if (isConnected) disconnect();
+  else connect();
+});
+
+btnStart.addEventListener('click', async () => {
+  streamStart = null;
+  await sendCmd(1);
+  log('Stream start command sent.');
+});
+
+btnStop.addEventListener('click', async () => {
+  await sendCmd(2);
+  log('Stream stop command sent.');
+});
+
+btnBuzz.addEventListener('click', async () => {
+  await sendCmd(4);
+  log('Buzz command sent.', 'success');
+});
+</script>
+</body>
+</html>

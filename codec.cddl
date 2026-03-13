@@ -1,0 +1,33 @@
+int16 = int .ge -32768 .le 32767
+int64 = int .size 8
+
+vec3 = {
+  "x"=> int16,
+  "y"=> int16,
+  "z"=> int16
+}
+
+imu_data = {
+  "us"=> int64,
+  ?"a"=> vec3,
+  ?"g"=> vec3,
+  ?"m"=> vec3,
+  ?"t"=> int16
+}
+
+imu_packet = [0*10 imu_data]
+
+uwb_data = {
+  "us"=> int64,
+  ?"inst"=> int16,
+  ?"mm"=> int16,
+  ?"mdeg"=> int16,
+  "p"=> int16
+}
+
+uwb_packet = [0*10 uwb_data]
+
+packet = {
+  ?"imu"=> imu_packet,
+  ?"uwb"=> uwb_packet
+}
