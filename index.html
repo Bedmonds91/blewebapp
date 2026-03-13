@@ -435,7 +435,8 @@ async function connect() {
 
   try {
     bleDevice = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [svcUUID] }],
+      filters: [{ namePrefix: 'Pill' }],
+      optionalServices: [svcUUID],
     });
     bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
     log(`Found: ${bleDevice.name || 'Unknown device'}`, 'success');
