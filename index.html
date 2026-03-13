@@ -183,12 +183,14 @@
       <circle cx="14" cy="14" r="9" stroke="#4f8ef7" stroke-width="1.5" stroke-dasharray="4 3"/>
     </svg>
     <h1>Sensalog BLE Monitor</h1>
-    <span id="app-version" style="font-size:0.7rem;font-family:monospace;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:0.2rem 0.5rem;">v0.0.1+0</span>
+    <span id="app-version" style="font-size:0.7rem;font-family:monospace;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:0.2rem 0.5rem;">v0.0.1+1</span>
     <div id="status-badge">
       <div class="dot" id="dot"></div>
       <span id="status-text">Disconnected</span>
     </div>
   </header>
+
+  <div id="error-banner" style="display:none;background:#450a0a;border:1px solid #b91c1c;color:#fca5a5;border-radius:8px;padding:0.65rem 1rem;font-size:0.82rem;font-family:monospace;"></div>
 
   <!-- Config -->
   <div class="card">
@@ -450,14 +452,16 @@ async function connect() {
     notifyChar.addEventListener('characteristicvaluechanged', onData);
     await notifyChar.startNotifications();
 
+    document.getElementById('error-banner').style.display = 'none';
     setConnectedUI(true, bleDevice.name || 'Connected');
     log('Notifications active — ready to stream.', 'success');
   } catch (err) {
     console.error('[BLE] Connection error:', err);
     log(`Connection failed: ${err.message}`, 'error');
-    statusText.textContent = err.message;
-    dot.className = 'dot';
     setConnectedUI(false);
+    const banner = document.getElementById('error-banner');
+    banner.textContent = `BLE Error: ${err.message}`;
+    banner.style.display = 'block';
   } finally {
     if (!isConnected) dot.className = 'dot';
     btnConnect.disabled = false;
