@@ -452,7 +452,10 @@ async function connect() {
     setConnectedUI(true, bleDevice.name || 'Connected');
     log('Notifications active — ready to stream.', 'success');
   } catch (err) {
+    console.error('[BLE] Connection error:', err);
     log(`Connection failed: ${err.message}`, 'error');
+    statusText.textContent = err.message;
+    dot.className = 'dot';
     setConnectedUI(false);
   } finally {
     if (!isConnected) dot.className = 'dot';
